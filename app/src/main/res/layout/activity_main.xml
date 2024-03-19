@@ -7,12 +7,18 @@
     tools:context=".MainActivity">
 
     <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Hello World!"
+        android:id="@+id/tv_shakeable_layer_entry"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:background="@drawable/bg_common"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="8dp"
+        android:text="Shakeable Layer Entry"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHeight_default="wrap"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintWidth_default="wrap" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

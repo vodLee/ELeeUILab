@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <declare-styleable name="ShakeableLayerLayout">
-        <attr name="maxOffset" format="integer" />
+        <attr name="maxOffset" format="dimension" />
     </declare-styleable>
 </resources>
