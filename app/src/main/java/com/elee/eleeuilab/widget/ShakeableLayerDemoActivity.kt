@@ -9,6 +9,5 @@ class ShakeableLayerDemoActivity: AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_shakeable_layer_demo)
-        lifecycle.addObserver(findViewById<ShakeableLayerLayout>(R.id.layout_shake))
     }
 }

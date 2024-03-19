@@ -7,6 +7,7 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.os.SystemClock
 import android.util.AttributeSet
 import android.view.Gravity
 import android.view.View
@@ -20,9 +21,10 @@ import kotlin.math.PI
  * 可晃动分层布局
  * shake shake~
  *
- * 基于android位置传感器实现
+ * 基于android位置传感器实现，具体可以看google的官方开发文档
+ * https://developer.android.google.cn/develop/sensors-and-location/sensors/sensors_position?hl=th#kotlin
  *
- * 目前初版完成，但是卡顿很明显，需要考虑优化方案。
+ * 目前addView必须用ShakeableLayoutParams
  */
 class ShakeableLayerLayout @JvmOverloads constructor(
     context: Context,
@@ -32,14 +34,22 @@ class ShakeableLayerLayout @JvmOverloads constructor(
     FrameLayout(context, attrs, defStyleAttr), DefaultLifecycleObserver {
 
     companion object {
-        private const val DEFAULT_CHILD_GRAVITY = Gravity.TOP or Gravity.START
 
         /**
          * 最大晃动角度
          */
         private const val MAX_SHAKE_ANGLE: Float = (PI / 9).toFloat()
+
+        /**
+         * 偏移动画时间
+         * 因为传感器200ms才返回一次数据，如果没有动画就会一卡一卡的
+         */
+        private const val ANIM_TIME = 1000
     }
 
+    /**
+     * 传感器相关
+     */
     private var sensorManager: SensorManager =
         context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
     private val accelerometerReading = FloatArray(3)
@@ -48,8 +58,22 @@ class ShakeableLayerLayout @JvmOverloads constructor(
     private val rotationMatrix = FloatArray(9)
     private val orientationAngles = FloatArray(3)
 
+    /**
+     * 是否开始摇动
+     */
     private var startShake = false
+
+    /**
+     * 开始摇动时角度
+     */
     private val originOrientationAngles = FloatArray(3)
+
+    /**
+     * 偏移量比例和更新时间
+     */
+    private var verticalOffsetRatio = 0F
+    private var horizontalOffsetRatio = 0F
+    private var updateRatioTime: Long = 0L
 
     private val listener = object : SensorEventListener {
         override fun onSensorChanged(event: SensorEvent?) {
@@ -65,37 +89,59 @@ class ShakeableLayerLayout @JvmOverloads constructor(
                 System.arraycopy(event?.values, 0, magnetometerReading, 0, magnetometerReading.size)
             }
             updateOrientationAngles()
-            invalidate()
         }
 
         override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
         }
     }
 
+    init {
+        /**
+         * 传感器的启动关闭通过lifecycle监听，这样和activity解耦
+         */
+        if (context is LifecycleOwner) {
+            (context as LifecycleOwner).lifecycle.addObserver(this)
+        }
+    }
+
+    /**
+     * 生成有最大偏移量的layoutParam
+     */
     override fun generateLayoutParams(attrs: AttributeSet?): ShakeableLayoutParams {
         return ShakeableLayoutParams(context, attrs)
     }
 
-    var verticalOffsetRatio = 0F
-    var horizontalOffsetRatio = 0F
-
+    /**
+     * 对于子view的偏移，直接通过平移动画布来实现
+     *
+     * p.s. 第一次这么玩，竟然成功了，还挺好玩
+     */
     override fun drawChild(canvas: Canvas?, child: View?, drawingTime: Long): Boolean {
         val lp = child?.layoutParams as ShakeableLayoutParams?
         val maxOffset = lp?.maxOffset
         canvas?.save()
+        // 计算实际偏移
+        val animProcess =
+            (SystemClock.elapsedRealtime() - updateRatioTime).coerceAtMost(ANIM_TIME.toLong()) / ANIM_TIME.toFloat()
+        val hRatio =
+            (1 - animProcess) * (lp?.currentHRatio ?: 0F) + animProcess * horizontalOffsetRatio
+        val vRatio =
+            (1 - animProcess) * (lp?.currentVRatio ?: 0F) + animProcess * verticalOffsetRatio
+        lp?.currentHRatio = hRatio
+        lp?.currentVRatio = vRatio
         maxOffset?.let {
             canvas?.translate(
-                maxOffset * horizontalOffsetRatio,
-                -maxOffset * verticalOffsetRatio
+                maxOffset * hRatio,
+                -maxOffset * vRatio
             )
         }
         val result = super.drawChild(canvas, child, drawingTime)
         canvas?.restore()
+        postInvalidate()
         return result
     }
 
     override fun onResume(owner: LifecycleOwner) {
-
         sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)?.also { accelerometer ->
             sensorManager.registerListener(
                 listener,
@@ -134,6 +180,7 @@ class ShakeableLayerLayout @JvmOverloads constructor(
         SensorManager.getOrientation(rotationMatrix, orientationAngles)
 
         if (!startShake && orientationAngles[0] != 0F) {
+            //记录打开页面时角度
             startShake = true
             System.arraycopy(
                 orientationAngles,
@@ -155,6 +202,8 @@ class ShakeableLayerLayout @JvmOverloads constructor(
                     .coerceAtMost(MAX_SHAKE_ANGLE) / MAX_SHAKE_ANGLE
             } else 0F
         }
+        // 记录更新时间
+        updateRatioTime = SystemClock.elapsedRealtime()
     }
 }
 
@@ -165,6 +214,12 @@ class ShakeableLayoutParams(context: Context, attrs: AttributeSet?) :
      * 最大偏移量，单位dp
      */
     var maxOffset: Float = 0F
+
+    /**
+     * 当前偏移比例
+     */
+    var currentHRatio = 0F
+    var currentVRatio = 0F
 
     init {
         val a: TypedArray = context.obtainStyledAttributes(attrs, R.styleable.ShakeableLayerLayout)
